@@ -34,7 +34,7 @@ class GraphicUpdateThread(QtCore.QThread):
         """ main code execution """
         while not self._stopevent:
             self.update_graph_event.emit()
-            time.sleep(0.1)
+            time.sleep(1)
 
     def stop(self, timeout=None):
         self._stopevent = True
