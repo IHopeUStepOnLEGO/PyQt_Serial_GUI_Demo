@@ -30,6 +30,10 @@ class GraphicUpdateThread(QtCore.QThread):
     def __del__(self):
         self.wait()
 
+    @pyqtSlot(bool)
+    def setStopevent(self, bool):
+        self._stopevent = bool
+
     def run(self):
         """ main code execution """
         while not self._stopevent:
@@ -73,6 +77,7 @@ class UartDataThread(QtCore.QThread):
         self._serialInst.close()
         self.quit()
 
+    @pyqtSlot(str)
     def connect(self, port="", baudrate=115200):
         """ connect to COM port """
         # serial instance variables
@@ -93,6 +98,7 @@ class UartDataThread(QtCore.QThread):
     def disconnect(self):
         try:
             self._serialInst.close()
+            self._isconnected = False
             print("disconnected from: '" + self._serialInst.port + "'")
         except:
             print("error closing connection with: '" + self._serialInst.port + "'")
@@ -126,6 +132,16 @@ class UartDataThread(QtCore.QThread):
 
 class Ui(QtWidgets.QMainWindow):
 
+    start_update_thread_signal = pyqtSignal()
+    stop_update_thread_signal = pyqtSignal()
+    update_thread_set_stopevent_signal = pyqtSignal(bool)
+    
+    start_data_thread_signal = pyqtSignal()
+    stop_data_thread_signal = pyqtSignal()
+    connect_data_thread_signal = pyqtSignal(str)
+    disconnect_serial_thread_signal = pyqtSignal()
+    
+
     def __init__(self):
         super(Ui, self).__init__() # call inherited class __init__ methods
         self.setupUi()
@@ -133,9 +149,19 @@ class Ui(QtWidgets.QMainWindow):
 
         self._GraphicUpdateThread = GraphicUpdateThread()
         self._GraphicUpdateThread.update_graph_event.connect(self.plotData)
+        self.start_update_thread_signal.connect(self._GraphicUpdateThread.start)
+        self.stop_update_thread_signal.connect(self._GraphicUpdateThread.stop)
+        self.update_thread_set_stopevent_signal.connect(self._GraphicUpdateThread.setStopevent)
 
         self._UartDataThread = UartDataThread(sleepperiod=0.1)
         self._UartDataThread.add_measure_event.connect(self.add_measure)
+        self.start_data_thread_signal.connect(self._UartDataThread.start)
+        self.stop_data_thread_signal.connect(self._UartDataThread.stop)
+        self.connect_data_thread_signal.connect(self._UartDataThread.connect)
+        self.disconnect_serial_thread_signal.connect(self._UartDataThread.disconnect)
+
+        
+
           
     def setupUi(self):
         uic.loadUi('bsensgui.ui', self)
@@ -212,7 +238,11 @@ class Ui(QtWidgets.QMainWindow):
         if self.com_isconnected:
             
             # close thread
-            self._UartDataThread.stop()
+            self.disconnect_serial_thread_signal.emit()
+            #self.stop_data_thread_signal.emit()
+            #self.stop_update_thread_signal.emit()
+            self.update_thread_set_stopevent_signal.emit(bool(True)) # halt update loop
+
             print("THREAD STOPPED")
 
             self.com_connectbutton.setText("connect")
@@ -232,10 +262,13 @@ class Ui(QtWidgets.QMainWindow):
                 # start thread
                 try:
                      # connect to serial
-                    #self._UartDataThread = UartDataThread(parentWindow=self, sleepperiod=0.1, baudrate=115200, port=m.group())
-                    self._UartDataThread.connect(port=m.group())
-                    self._UartDataThread.start()
-                    self._GraphicUpdateThread.start()
+                    self.connect_data_thread_signal.emit(m.group())
+                    self.start_data_thread_signal.emit()
+
+                    try:
+                        self.start_update_thread_signal.emit()
+                    except:
+                        self.update_thread_set_stopevent_signal.emit(bool(False)) # enable update loop
                     print("THREAD STARTED")
 
                     self.com_isconnected = True
